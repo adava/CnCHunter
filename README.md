@@ -9,15 +9,15 @@ https://user-images.githubusercontent.com/32986240/126545227-66adeb6b-7d3f-436e-
 # CnC Hunter
 CnCHunter is a fork of RiotMan, and it allows exploiting malware for active probing. This tool is presented in BlackHat USA 2021. For the presentation and the technical paper, see [CnCHunter: An MITM-Approach to Identify Live CnC Servers](https://www.blackhat.com/us-21/briefings/schedule/index.html#cnchunter-an-mitm-approach-to-identify-live-cnc-servers-23524).
 
-Currently, you can use the tool for finding CnC server or redirecting the CnC server traffic to a custom address. In addition, using this tool, you would get the system call log and the traffic that the malware generates. The traffic
-output is in pcap format, and the system call is strace output. For analyzing IoT malware, install the tool and analyze your malware binary by running the tool. You would only need to provide the malware sample (and candidate addresses for probing); no other configurations are needed after installing the tool.
+Currently, you can use the tool for finding CnC servers or redirecting a CnC server's traffic to a custom address. In addition, using this tool, you would get the system call log and the traffic that the malware generates. The traffic
+output is in pcap format, and the system call is the strace's output. For analyzing IoT malware, install the tool and analyze your malware binary by running the tool. You would only need to provide the malware sample (and candidate addresses for probing); no other configurations are needed after installing the tool.
 
 # Installation
 We are working on creating an installation script but meanwhile you can follow the steps below to install CnCHunter.
 Every step and command required for the installation is given below. Please be patient and walk through the steps, you wouldn't need (hopefuly) to run any
 other command or resolve any dependencies yourself.
 ## Installing OS
-CnCHunter is tested on Ubuntu 18.04. RiotMan initital prototype was built on top of Debian 8.3, and it was tested for Debian 8.11. However, CnCHunter was not tested on those Oses. You can download a virtualbox image for Ubuntu 18.04 from [here](
+CnCHunter is tested on Ubuntu 18.04. RiotMan's initital prototype was built on top of Debian 8.3, and it was tested for Debian 8.11. However, CnCHunter was not tested on those operating systems. You can download a virtualbox image for Ubuntu 18.04 from [here](
 https://sourceforge.net/projects/osboxes/files/v/vb/55-U-u/18.04/18.04.3/18.04.3VB-64bit.7z/download).
 
 
@@ -84,13 +84,13 @@ After you completed the above steps, you're ready to compile Qemu. Compile by:
     ../configure
     make
 
-> the **build** folder name should not change, RiotMan looks in Qemu/build for the Qemu executable.
+> the **build** folder name should not change, CnCHunter looks in Qemu/build for the Qemu executable.
 
 ## Network configuration
 We have scripts that does the required configuration before a malware sample analysis but still there are some basic configurations
 that need to be done manually.
 
-Set the host network interface in the start_network.sh script (it should be correct if you downloaded the VM image we mentioned above):
+Set the host network interface in the start_network.sh script (it should be correct if you downloaded the VM image that we mentioned above):
 
     ip link show # find the host network interface name
     vi scripts/start_network.sh # change the IF_INET variable value
@@ -113,7 +113,7 @@ Configure Qemu bridging by creating "/usr/local/etc/qemu/bridge.conf". You'd nee
     allow br-wan
 
 # Execution
-If you completed the **Installation** steps, you're ready to execute RiotMan and analyze an IoT malware. Currently, only MIPS 32BE samples can be analyzed.
+If you completed the **Installation** steps, you're ready to execute CnCHunter and analyze an IoT malware. Currently, only MIPS 32BE samples can be analyzed.
 You would need three inputs for your analyis:
 * **a malware sample**: we placed a gafgyt malware sample (the old malware sample we mention in our BlackHat 2021 paper) in the malware/malware folder. Extract by
 
