@@ -6,7 +6,9 @@ from manager.Sandbox import *
 # from profiler.DynamicAnalysis import *
 from profiler.traffic_analyst import *
 from profiler.util import *
+from profiler.config_params import *
 # from manager.AnalysisResult import *
+from datetime import datetime
 import time
 import collections
 import sqlite3
@@ -23,7 +25,7 @@ def manager_print(*args):
     module_print("[Manager]",INSTANCE_NAME, ":", *args)
 
 class Controller:
-    def __init__(self, experiment_time, abs_path, mal_name, target_CnCs= None):
+    def __init__(self, experiment_time, abs_path, mal_name, options= None):
         global INSTANCE_NAME
         l.warning(" " * 40 + "Starting analysis for %s", mal_name)
         # responsibility for this module is to keep track of iterations and control everything.
@@ -44,29 +46,40 @@ class Controller:
         self.finished_time = float("inf")
         self.missing_configs = []
         self.cnc_report = None
-        if target_CnCs and "IPs" in target_CnCs:
-            self.target_CnCs = target_CnCs["IPs"]
+        if options and "IPs" in options:
+            self.target_CnCs = options["IPs"]
         else:
             self.target_CnCs = None
         if self.target_CnCs:
             self.num_of_iterations = len(self.target_CnCs) + 1 #try to MitM and hunt
         else:
             self.num_of_iterations = 1 #just find the CnC
-        if target_CnCs and "PORTs" in target_CnCs:
-            self.excluded_ports = target_CnCs["PORTs"]
+        if options and "PORTs" in options:
+            self.excluded_ports = options["PORTs"]
         else:
             self.excluded_ports = None
         
-        if target_CnCs and "Alexa" in target_CnCs:
-            self.Alexa_ranking = target_CnCs["Alexa"]
+        if options and "Alexa" in options:
+            self.Alexa_ranking = options["Alexa"]
         else:
             self.Alexa_ranking = -1
+        if options and "CnCAddr" in options:
+            self.cnc_addr = options["CnCAddr"]
+        else:
+            self.cnc_addr = None
         self.success_CnC_connections = {}
-        manager_print("Num of iterations: ", self.num_of_iterations)
+        rep_it = self.num_of_iterations
+        if self.cnc_addr:
+            rep_it -= 1
+        manager_print("Num of iterations: ", rep_it)
 
     def analyze_and_MitM(self):
-        cnc_addr = None
-        for i in range(self.num_of_iterations):
+        cnc_addr = self.cnc_addr
+        range_start = 0
+        if cnc_addr:
+            range_start = 1
+        i = 0
+        for i in range(range_start, self.num_of_iterations):
             manager_print(": starting iteration ", i)
             iteration_target_cnc_ip = ""
             self.instance_object = None
@@ -121,17 +134,9 @@ class Controller:
                     self.serialize_cnc_info(all_result[-1],mapping={"SUC":"live_comm"})
             else:
                 comms = find_success(all_result[-1],iteration_target_cnc_ip)
-                if comms:
-                    if isinstance(comms,list) or comms>0:
-                        manager_print("connection to",iteration_target_cnc_ip,"was successful:",comms)
-                        manager_print("WARNING, successful connections can still be FP")
-                        self.success_CnC_connections[iteration_target_cnc_ip] = comms
-                        if iteration_target_cnc_ip==all_result[-1][0][0]:
-                            self.serialize_cnc_info(all_result[-1],"listened.csv",mapping={"SUC":"responses"}, fieldnames=["sample_name", "CnC_Addr", "RST", "SYN", "responses"])
-                        else:
-                            manager_print(iteration_target_cnc_ip, "is not the most frequent address!")
-                            info = [(iteration_target_cnc_ip,{"SYN":comms}),("Not the most frequesnt",)]
-                            self.serialize_cnc_info(info,"listened.csv",{"SUC":"responses"},fieldnames=["sample_name", "CnC_Addr", "RST", "SYN", "responses"])
+                info = self.prepare_info(comms, iteration_target_cnc_ip, all_result[-1])
+                self.serialize_cnc_info(info,MitM_RESULT_FILE,mapping={"SUC":"responses"}, fieldnames=["sample_name", "CnC_Addr", "SYN", "responses", "misc", "timestamp"])
+                        
             # TODO: we need to consider other possible CnC addresses
 
             self.dic_analysis_result[i] = all_result
@@ -170,12 +175,16 @@ class Controller:
             l.warning("%d_%s: !!!!!!!!!!!!!!!!!! Already STOPPED !!!!!!!!!!!!!!!!!!", self.iteration, self.name)
 
     def get_CnC_addr(self):
-        if len(self.cnc_report)>0: # the first report is the cnc report
+        if self.cnc_addr:
+            return self.cnc_addr
+        elif len(self.cnc_report)>0: # the first report is the cnc report
             if len(self.cnc_report[0])>0: #the first item of the tuple is the IP[:port]
                     return self.cnc_report[0][0]
-        return ""
+        else:
+            return ""
     
-    def serialize_cnc_info(self, info, filename="cncs.csv", mapping={"SUC":"live_comm"}, fieldnames = None):
+    def serialize_cnc_info(self, info, filename=CNCS_FILE, mapping={"SUC":"live_comm"}, fieldnames = None):
+        global cncFields
         if len(info)==0:
             manager_print("Nothing or serialize!")
             return
@@ -184,8 +193,31 @@ class Controller:
         if len(info)>1:
             d1['misc'] = info[1:]
         row = prepare_row(info[0][0],d1,mapping)
+        now = datetime.now()
+        date_time = now.strftime("%m-%d-%Y_%H:%M:%S")
+        row["timestamp"] = date_time
         cnc_file = self.abs_path + os.sep + filename
-        if fieldnames:
-            write_to_csv(row,cnc_file,fieldnames)
-        else:
-            write_to_csv(row,cnc_file)
+        if not fieldnames:
+            fieldnames = cncFields
+        write_to_csv(row,cnc_file,fieldnames)
+    
+    def prepare_info(self, comms, iteration_target_cnc_ip, result):
+        info = result
+        msg = ""
+        if comms:
+            if isinstance(comms,list):
+                msg = "successful"
+                manager_print(iteration_target_cnc_ip, "is not the most frequent address!")
+                info = [(iteration_target_cnc_ip,{"SYN":comms}),("Not the most frequent",)]
+            elif comms>0:
+                msg = "successful"
+                if len(result)>=2:
+                    result[1] = [("verified_success", "True"),]
+                else:
+                    result.append([("verified_success", "True"),])
+                info = result
+            else:
+                msg = "unsuccessful"
+            manager_print("connection to", result[0][0], "was", msg, comms)
+            manager_print("WARNING, successful connections can still be FP")
+        return info
