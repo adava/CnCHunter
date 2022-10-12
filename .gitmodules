@@ -1,6 +1,6 @@
-[submodule "Qemu"]
-	path = Qemu
-	url = https://github.com/qemu/qemu
 [submodule "CnCs/IRC"]
 	path = CnCs/IRC
 	url = https://github.com/jrosdahl/miniircd.git
+[submodule "Qemu"]
+	path = Qemu
+	url = https://github.com/qemu/qemu.git

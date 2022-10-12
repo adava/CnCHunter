@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import signal
 import logging
@@ -8,6 +8,7 @@ import subprocess
 import time
 import threading
 from manager.Manager import *
+from profiler.config_params import *
 from datetime import datetime
 
 from elftools.elf.elffile import ELFFile
@@ -27,15 +28,14 @@ BANNER = """
  ╚═════╝╚═╝  ╚═══╝ ╚═════╝    ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                            
 """
 
-PARALLEL_INSTANCES = 1 # Don't increase this TODO: need to resolve DHCP problem with more parallel instances
-EXPERIMENT_TIME = 140
+
 POLLING_WAIT = [EXPERIMENT_TIME, EXPERIMENT_TIME / 2, EXPERIMENT_TIME / 4]
 LIST_NEED_DEBIAN = []
 LIST_FAILED = []
 LIST_0_FAILED = []
 LIST_FORCE_STOPPED = []
 ALL_DONE = False
-ULTIMATE_TIMER = 1000
+
 
 CUR_DIR = os.path.dirname(os.path.realpath(__file__))
 DIR_SCRIPTS = CUR_DIR + os.sep + "scripts" + os.sep
@@ -118,7 +118,7 @@ def stop_all_instances(set_instances):
             p.terminate()
 
 
-def main(CnC_addresses=None):
+def main(arguments=None):
     global ALL_DONE, ULTIMATE_TIMER
     global supported_architectures, set_running_instances, start_network_command, stop_network_command, CUR_DIR
     list_malware_name = find_malware("malware/malware")
@@ -129,8 +129,8 @@ def main(CnC_addresses=None):
     index_malware, number_of_malware = 0, len(list_malware_name)
 
     len_attacks = 1
-    if CnC_addresses and 'IPs' in CnC_addresses:
-        len_attacks +=len(CnC_addresses['IPs'])
+    if arguments and 'IPs' in arguments:
+        len_attacks +=len(arguments['IPs'])
     ULTIMATE_TIMER = ULTIMATE_TIMER + number_of_malware * EXPERIMENT_TIME * len_attacks + (PARALLEL_INSTANCES*EXPERIMENT_TIME)
 
     polling_wait_index = 0
@@ -138,8 +138,8 @@ def main(CnC_addresses=None):
         if len(set_running_instances) < PARALLEL_INSTANCES:
             if(is_platform_supported(os.path.join(os.path.join(CUR_DIR,"malware/malware"), list_malware_name[index_malware]),supported_architectures)):
                 new_instance = None
-                if CnC_addresses:
-                    new_instance = Controller(EXPERIMENT_TIME, CUR_DIR, list_malware_name[index_malware], CnC_addresses)
+                if arguments:
+                    new_instance = Controller(EXPERIMENT_TIME, CUR_DIR, list_malware_name[index_malware], arguments)
                 else:
                     new_instance = Controller(EXPERIMENT_TIME, CUR_DIR, list_malware_name[index_malware])
                 # mainloop_thread = threading.Thread(target=new_instance.analyze_and_MitM)
@@ -195,6 +195,7 @@ if __name__ == "__main__":
     parser.add_argument("-target", nargs='*', type=str, help="the target CnC Address e.g. 104.168.98.105:45 or 104.168.98.0/24:45")
     parser.add_argument("-ports", nargs='*', type=str, help="the ports to be excluded like 23 (attributed to other activities like scanning)")
     parser.add_argument("-Alexa", type=int, default=-1,help="Whether using Alexa ranking for whitelisting and what should be the cutoff")
+    parser.add_argument("-CnCAddr", type=str,help="The CnC address to be used for MitM (without this option, CnCHunter tries to find the CnC address automatically); currently, this feature should be only used with a single sample")
     args = parser.parse_args()
     arguments = ()
     args_dict = {}
@@ -210,6 +211,8 @@ if __name__ == "__main__":
     if args.ports:
          args_dict['PORTs'] = args.ports
     args_dict["Alexa"] = args.Alexa
+    if args.CnCAddr:
+        args_dict['CnCAddr'] = args.CnCAddr
     if len(args_dict):
         arguments = (args_dict,)
     
@@ -220,3 +223,4 @@ if __name__ == "__main__":
     # mainloop_thread = threading.Thread(target=main)
     # mainloop_thread.daemon = True
     # mainloop_thread.start()
+

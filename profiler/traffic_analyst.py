@@ -5,11 +5,21 @@ import socket
 import re
 import ipaddress
 import numpy as np
-from profiler.util import *
+if __package__==None:
+    from util import *
+    from config_params import *
+else:
+    from .util import *
+    from .config_params import *
 from bs4 import BeautifulSoup # scraper
 import requests as r # for get page information
 
 PRINT = True
+
+# settings
+SYN_ANALYSIS_SUCCESS = 1
+SYN_PRIME = 1
+SERVER_DATA_SUCCESS = 1
 
 # using globals since inspect packet function doesn't have any arguments
 
@@ -29,6 +39,12 @@ id = 0
 count = 0
 
 FILE_NAME = ""
+
+def configure_analysis(activate_syn_analysis, historical_sync, activate_server_data_analysis):
+    global SYN_ANALYSIS_SUCCESS, SYN_PRIME, SERVER_DATA_SUCCESS
+    SYN_ANALYSIS_SUCCESS = activate_syn_analysis
+    SYN_PRIME = historical_sync
+    SERVER_DATA_SUCCESS = activate_server_data_analysis
 
 def finder_print(*args):
     global FILE_NAME
@@ -105,18 +121,27 @@ def inspect_packet(pkt):
                     port_dict[port_num] +=1 # a new host of this port was contacted
                 else:
                     port_dict[port_num] = 1 # the only host, we favor these
-            if pkt.tcp.flags_reset=='1':
-                # print(dir(pkt.tcp))
-                state = "RST"
-            elif pkt.tcp.flags_syn=='1':
+            if pkt.tcp.flags_syn=='1':
                 if pkt.tcp.flags_ack!="1":
                     state = "SYN"
                 else:
                     return # don't need to take into account SYN ACK
-            elif pkt.tcp.flags_fin=="1":
-                state = "FIN" # FIN will later tell us if the conn was really a success
             else:
-                state = "SUC" # ACK is success (handshake completed)
+                if own_ip and pkt.ip.dst==own_ip or "192.168" not in pkt.ip.src: # it's a server response
+                    if pkt.tcp.flags_reset=='1':
+                        # print(dir(pkt.tcp))
+                        state = "RST"
+                    elif pkt.tcp.flags_fin=="1":
+                        state = "FIN" # FIN will later tell us if the conn was really a success
+                    elif pkt.tcp.len!="0":
+                        state = "SUC" # We are interested in server exchanging data
+                    else:
+                        state = "OTHER"
+                else: #otherwise, we don't care about the client behaviors
+                    if not own_ip:
+                        finder_print("Determining state is not accurate, own_ip is missing")
+                    state = "OTHER"
+
             if target in ip_dict:
                 ip_dict[target]["Total"] = ip_dict[target]["Total"] + 1
                 if state in ip_dict[target]:
@@ -165,18 +190,29 @@ def generate_addr_list(addrs):
 
 # dict_ip is the find_CnC return value that is a list of IP tuples with {'Total': VALU1, 'SYN': VALUE2, 'SUC': VALUE3, 'RST': VALUE4} values
 # returns a list of IP tuples with the weight of being a succesful CnC communication
-def find_success(list_ip, target_ip=None,ratio_threshold=0):
+def find_success(list_ip, target_ip=None, ratio_threshold=0):
+    global SYN_ANALYSIS_SUCCESS, SYN_PRIME, SERVER_DATA_SUCCESS
     result = {}
     for ip in list_ip:
-        if 'SUC' in ip[1] and 'RST' not in ip[1] and ("FIN" not in ip[1] or ip[1]['FIN']<=2): # FIN shouldn't occure at all but we tolerate 2 times because some Mirai are like this
-            if target_ip and target_ip.split(":")[0]==ip[0].split(":")[0]:
-                if 'SYN' in ip[1]: #self IP does not have SYN
-                    return ip[1]['SYN']
-                else:
-                    return 0
+        SUCCESS = True # we follow a masking scheme here, so the initial value is true
+        if SYN_ANALYSIS_SUCCESS:
+            if 'SYN' in ip[1] and ip[1]['SYN']!=0:
+                formula_val = SYN_PRIME/ip[1]['SYN']
+                if formula_val<1: # indicates error
+                    SUCCESS = SUCCESS and False
             else:
-                if 'SYN' in ip[1]: #self IP does not have SYN
-                    result[ip[0]] = ip[1]['SYN']
+                finder_print("SYN can not be zero, finding successful connection aborted!")
+                return
+        if SERVER_DATA_SUCCESS:
+            if 'SUC' not in ip[1]:
+                SUCCESS = SUCCESS and False
+        if target_ip and target_ip.split(":")[0]==ip[0].split(":")[0]:
+            if SUCCESS: 
+                return ip[1]['SYN']
+            else:
+                return 0
+        elif SUCCESS:
+                result[ip[0]] = ip[1]['SYN']
     if not target_ip:
         sorted_res = sorted(result.items(), key=lambda kv: kv[1]['Total'], reverse=True)
         return sorted_res
@@ -230,12 +266,10 @@ def find_cnc(pcap, ip=None, ports=None,PRINT=False,Alexa_ranking=-1):
         finder_print("****Candidates****")
     for ip in ip_dict:
         shoud_be_added = False
-        if "RST" in ip_dict[ip] and ip_dict[ip]["RST"]>MIN_OCCURRENCE: 
-            shoud_be_added = True
-        if "SYN" in ip_dict[ip] and ip_dict[ip]["SYN"]>MIN_OCCURRENCE:
-            shoud_be_added = True
-        if "SUC" in ip_dict[ip] and ip_dict[ip]["SUC"]>MIN_OCCURRENCE:
-            shoud_be_added = True
+        Examined_stats = ["RST", "SYN", "SUC", "OTHER"]
+        for stat in Examined_stats:
+            if stat in ip_dict[ip] and ip_dict[ip][stat]>MIN_OCCURRENCE:
+                shoud_be_added = True
         if "DNS_QUERIES" in ip_dict[ip]: # Single use of DNS could be indicative because activities like scanning are not based on DNS
             shoud_be_added = True
         if shoud_be_added:
