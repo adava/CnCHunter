@@ -18,8 +18,6 @@ There is an installer that is tested for Ubuntu LTS 20.04. Install your operatin
     git clone --recursive [THIS-REPO-URL]
     cd CnCHunter
     ./install.sh
-
-
  
 After the installation, you need to provide the samples for analysis. There is a sample in the malware/malware directory that allows you run, and test the tool. The C2 address of that sample is 138.197.104.187:23.
 
